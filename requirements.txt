@@ -1,0 +1,6 @@
+# 依赖声明以 pyproject.toml 为准（pip install -e . 自动安装）。
+# 此文件仅供本地裸跑（pip install -r requirements.txt）使用，版本需与 pyproject 保持一致。
+pyyaml>=6.0,<7.0
+openai>=1.0,<2.0
+anthropic>=0.40,<1.0
+httpx>=0.27,<1.0

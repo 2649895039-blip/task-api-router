@@ -1,0 +1,19 @@
+# 本地配置（可能含真实 API key），不要提交
+config/models.yaml
+
+# 运行时数据（历史记录/学习分），不要提交
+data/
+
+# 本地研究快照/临时基准数据，不属于插件运行时
+extras/reference/
+benchmarks/
+
+# Python 构建产物
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+.env
+.venv/

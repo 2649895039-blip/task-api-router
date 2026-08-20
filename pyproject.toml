@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "task-api-router"
+version = "0.2.0"
+description = "任务级 AI 模型调度插件：自动为任务选择最合适的模型（路由核心与 provider 解耦）"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "openai>=1.0,<2.0",
+    "anthropic>=0.40,<1.0",
+    "pyyaml>=6.0,<7.0",
+    "httpx>=0.27,<1.0",
+]
+
+[project.scripts]
+task-router = "task_router.cli:main"
+
+[tool.setuptools]
+packages = ["task_router", "task_router.adapters"]
+
+[tool.setuptools.package-data]
+# 只随包发布公开模板（含真实 key 的本地 config/models.yaml 已被 .gitignore，绝不打包）
+task_router = ["config/models.example.yaml", "config/ranking.yaml"]
