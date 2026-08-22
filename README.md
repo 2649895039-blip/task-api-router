@@ -279,7 +279,7 @@ data/
 
 ## 当前版本
 
-`v0.2.0` 是首个双宿主公开版本，包含任务路由、静态能力榜单、模型回退、DAG 执行、独立运行日志，以及 Claude Code PreToolUse 动作守卫。发布记录见 [Releases](https://github.com/2649895039-blip/task-api-router/releases)。
+`v0.2.1` 是首个双宿主公开版本，包含任务路由、静态能力榜单、模型回退、DAG 执行、独立运行日志，以及 Claude Code PreToolUse 动作守卫。发布记录见 [Releases](https://github.com/2649895039-blip/task-api-router/releases)。
 
 ## License
 

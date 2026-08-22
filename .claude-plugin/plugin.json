@@ -1,6 +1,6 @@
 {
   "name": "task-api-router",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "任务级 AI 模型调度插件：自动为任务选择最合适的模型（省钱 + 高效），并为 Agent 提供工具动作守卫（拦截危险 shell 命令 / 越界写入）",
   "author": {
     "name": "task-api-router contributors"
