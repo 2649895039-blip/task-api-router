@@ -1,8 +1,27 @@
 # 🧠 task-api-router — 任务级 AI 模型路由与成本优化插件
 
+[![GitHub stars](https://img.shields.io/github/stars/2649895039-blip/task-api-router?style=social&label=Star)](https://github.com/2649895039-blip/task-api-router)
+[![GitHub forks](https://img.shields.io/github/forks/2649895039-blip/task-api-router?style=social&label=Fork)](https://github.com/2649895039-blip/task-api-router/network/members)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/2649895039-blip/task-api-router?display_name=tag&sort=semver)](https://github.com/2649895039-blip/task-api-router/releases)
+
 > 给每个任务自动选择最合适的模型，省钱又高效。**按对话收任务**：一次输入 = 一次任务 = 一个独立日志。
 > 路由核心与具体 provider 完全解耦，可自由接入任意模型。
 > 双宿主开箱即用：**Claude Code 插件 + OpenClaw Skill**，内置工具动作守卫（拦截危险 shell 命令 / 越界写入）。
+
+适合需要在多个大模型之间自动分配任务、控制成本，或给 Agent 工具调用增加本地风险检查的开发者。核心逻辑在本地运行；API key 只读取你自己的环境变量。
+
+## 30 秒验证
+
+```bash
+git clone https://github.com/2649895039-blip/task-api-router.git
+cd task-api-router
+python -m pip install -e .
+python -m task_router --version
+python -m task_router --models
+```
+
+没有配置 API key 也可以先运行 `--version`、`--models` 和动作守卫；真正执行任务前，再按下方说明配置模型。
 
 ## 设计原则
 
@@ -96,11 +115,11 @@ task-api-router/
 ### Claude Code
 
 ```bash
-pip install -e .        # 安装 task-router 命令（首次）
-# 在项目里 /tmp/settings.json 启用插件：
-claude --plugin <本仓库绝对路径>
-# 或把仓库 clone 到项目根，Claude Code 会自动发现 .claude-plugin/
+pip install -e .                         # 安装 task-router 命令（首次）
+claude --plugin-dir <本仓库绝对路径>       # 本地加载插件
 ```
+
+也可以在 Claude Code 的插件设置中添加本仓库目录。插件根目录必须包含 `.claude-plugin/plugin.json`。
 
 安装后：
 - **动作守卫**：任何 `Bash` / `Write` / `Edit` 工具调用前，本地检查是否命中
@@ -116,6 +135,8 @@ mkdir -p <openclaw-workspace>/skills/task-router
 cp openclaw/skills/task-router/SKILL.md <openclaw-workspace>/skills/task-router/
 pip install -e .        # 安装 task-router 命令
 ```
+
+OpenClaw 当前通过 `openclaw/skills/task-router/SKILL.md` 加载 Skill；复制该目录后重启或重新加载 workspace 即可。
 
 之后 OpenClaw 即可在工具执行前调用同一个守卫：
 
@@ -255,6 +276,10 @@ data/
 - [x] M4: Reporter + RunLog（简化：砍 Feedback 学习）
 - [x] M5: 静态 ranking + 本地筛查/廉价分类 + 动作守卫
 - [x] M6/M7: 本地 API 网关 + 流式（已按用户决定退役并移除）
+
+## 当前版本
+
+`v0.2.0` 是首个双宿主公开版本，包含任务路由、静态能力榜单、模型回退、DAG 执行、独立运行日志，以及 Claude Code PreToolUse 动作守卫。发布记录见 [Releases](https://github.com/2649895039-blip/task-api-router/releases)。
 
 ## License
 
