@@ -11,6 +11,37 @@
 
 适合需要在多个大模型之间自动分配任务、控制成本，或给 Agent 工具调用增加本地风险检查的开发者。核心逻辑在本地运行；API key 只读取你自己的环境变量。
 
+---
+
+**EN / English**
+
+**task-api-router** routes every AI task to the best configured model — control API costs, and guard agent actions before they touch your workspace.
+
+You need this when one model is too expensive for simple work, another is better at coding or reasoning, and agent tools must be checked before running risky shell commands or writing outside the project.
+
+```
+Task → Classifier → Router → Model Registry → Provider
+```
+
+- **Zero-token local classification** where possible; cheap-model fallback for ambiguous tasks
+- **Configurable model rankings** (YAML) — no code changes to add a model
+- **Cost estimation before execution**, circuit breaker & fallback, DAG execution
+- **Local action guard** — blocks destructive shell commands / out-of-workspace writes, no API key needed
+- **Dual-host**: works as a Claude Code plugin + OpenClaw skill
+
+Real example: a Python debugging task routes to `claude-sonnet` for stronger reasoning, while a bulk translation task routes to `deepseek-v4-flash` for lower cost. A destructive shell command is blocked before execution.
+
+**Quick start (offline demo, no API key):**
+
+```bash
+git clone https://github.com/2649895039-blip/task-api-router.git
+cd task-api-router
+python -m pip install -e .
+python demo_route.py
+```
+
+Full documentation in Chinese below. Contributions & issues welcome.
+
 ## 30 秒验证
 
 ```bash
