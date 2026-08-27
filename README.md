@@ -31,6 +31,8 @@ Task → Classifier → Router → Model Registry → Provider
 
 Real example: a Python debugging task routes to `claude-sonnet` for stronger reasoning, while a bulk translation task routes to `deepseek-v4-flash` for lower cost. A destructive shell command is blocked before execution.
 
+**See the value before adding an API key:** the offline demo prints the routed model, estimated cost, an always-strongest baseline, and the local safety decision. See [the value demo](docs/value-demo.md).
+
 **Quick start (offline demo, no API key):**
 
 ```bash

@@ -51,12 +51,19 @@ def main() -> None:
     print("task-api-router deterministic demo")
     print("=" * 80)
 
+    routed_total = 0.0
+    strongest_total = 0.0
+
     for index, task in enumerate(TASKS, start=1):
         model = MODELS[task["model"]]
         cost = estimate_cost(
             model,
             task["input_tokens"],
             task["output_tokens"],
+        )
+        routed_total += cost
+        strongest_total += estimate_cost(
+            MODELS["claude-sonnet"], task["input_tokens"], task["output_tokens"]
         )
         guard_result = (
             "BLOCKED: destructive repository action requires confirmation"
@@ -69,6 +76,13 @@ def main() -> None:
         print(f"Model: {model.name}")
         print(f"Estimated cost: ${cost:.6f}")
         print(f"Action guard: {guard_result}")
+
+    saved = strongest_total - routed_total
+    percent = (saved / strongest_total * 100) if strongest_total else 0.0
+    print("\nCost signal")
+    print(f"Routed total: ${routed_total:.6f}")
+    print(f"Always-strongest baseline: ${strongest_total:.6f}")
+    print(f"Estimated saving in this demo: ${saved:.6f} ({percent:.1f}%)")
 
 
 if __name__ == "__main__":
