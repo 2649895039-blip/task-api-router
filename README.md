@@ -5,6 +5,12 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/2649895039-blip/task-api-router?display_name=tag&sort=semver)](https://github.com/2649895039-blip/task-api-router/releases)
 
+Official project: <https://github.com/2649895039-blip/task-api-router>. The
+source is MIT-licensed and may be reused with the copyright and license
+notice preserved. Forks and modified distributions must use a different
+product name and must not present themselves as the official project.
+See [NOTICE](NOTICE) and [TRADEMARKS.md](TRADEMARKS.md).
+
 > 给每个任务自动选择最合适的模型，省钱又高效。**按对话收任务**：一次输入 = 一次任务 = 一个独立日志。
 > 路由核心与具体 provider 完全解耦，可自由接入任意模型。
 > 双宿主开箱即用：**Claude Code 插件 + OpenClaw Skill**，内置工具动作守卫（拦截危险 shell 命令 / 越界写入）。

@@ -69,6 +69,12 @@ class RoutingTests(unittest.TestCase):
         errors = validate_repository(Path(__file__).parents[1])
         self.assertEqual([], errors)
 
+    def test_release_contains_identity_and_attribution_notices(self):
+        root = Path(__file__).parents[1]
+        self.assertTrue((root / "NOTICE").is_file())
+        self.assertTrue((root / "TRADEMARKS.md").is_file())
+        self.assertIn("2649895039-blip/task-api-router", (root / "TRADEMARKS.md").read_text(encoding="utf-8"))
+
     def test_clear_task_uses_no_classifier_api(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry = make_registry(tmp)

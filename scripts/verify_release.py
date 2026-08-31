@@ -15,6 +15,8 @@ REQUIRED_FILES = (
     "config/models.example.yaml",
     "task_router/config/models.example.yaml",
     "SECURITY.md",
+    "NOTICE",
+    "TRADEMARKS.md",
 )
 
 def _version_from_init(root: Path) -> str:
