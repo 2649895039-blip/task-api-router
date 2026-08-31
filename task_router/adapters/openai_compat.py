@@ -10,7 +10,7 @@ import httpx
 from openai import OpenAI
 
 from ..exceptions import ProviderCallError
-from ..models import ModelConfig, ModelResponse, safe_error_text
+from ..models import ModelConfig, ModelResponse, provider_error_metadata, safe_error_text
 from .base import BaseAdapter
 
 
@@ -49,7 +49,11 @@ class OpenAICompatAdapter(BaseAdapter):
             try:
                 resp = client.chat.completions.create(**kwargs)
             except Exception as e:
-                return ModelResponse.fail(model_cfg.id, f"调用失败: {safe_error_text(e)}")
+                status, retryable = provider_error_metadata(e)
+                return ModelResponse.fail(
+                    model_cfg.id, f"调用失败: {safe_error_text(e)}",
+                    status_code=status, retryable=retryable,
+                )
         finally:
             client.close()   # 用完即关，防并发下连接/fd 泄漏
         latency_ms = int((time.time() - start) * 1000)

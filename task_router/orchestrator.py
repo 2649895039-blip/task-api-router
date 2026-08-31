@@ -8,6 +8,7 @@
     result = r.run("写一篇关于人工智能的科普文章")
 """
 from dataclasses import dataclass
+from typing import Optional
 
 from .allocator import Allocator
 from .client import ModelClient
@@ -37,19 +38,29 @@ class RunResult:
 
 
 class RouterOrchestrator:
-    def __init__(self, config_path: str, data_dir: str):
+    def __init__(self, config_path: str, data_dir: str, *, max_concurrency: int = 4,
+                 max_cost_usd: Optional[float] = None,
+                 max_total_tokens: Optional[int] = None,
+                 log_content: bool = False):
         self.config_path = config_path
         self.data_dir = data_dir
         self.registry = ModelRegistry(config_path)
         self.client = ModelClient(self.registry)
-        self.reporter = Reporter(f"{data_dir}/history.jsonl")
-        self.runlog = RunLog(data_dir)
+        self.reporter = Reporter(f"{data_dir}/history.jsonl", include_content=log_content)
+        self.runlog = RunLog(data_dir, include_content=log_content)
         self.allocator = Allocator(self.registry)
         self.screen = TaskScreen(self.client, self.registry)
         self.planner = Planner(self.client, self.registry)
-        self.executor = DAGExecutor(self.client, self.allocator)
+        self.executor = DAGExecutor(
+            self.client, self.allocator, max_concurrency=max_concurrency,
+            max_cost_usd=max_cost_usd, max_total_tokens=max_total_tokens,
+        )
 
     def run(self, task: str, use_planner: bool = False) -> RunResult:
+        if not isinstance(task, str) or not task.strip():
+            raise ValueError("任务不能为空")
+        if len(task) > 100_000:
+            raise ValueError("任务过长（最多 100000 个字符）")
         # 0) 本地脚本优先；无法确定时只调用一次最便宜 API 做短分类。
         pre = preclassify(task)
         decision = self.screen.decide(task)

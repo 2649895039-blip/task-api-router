@@ -38,9 +38,27 @@ class ModelRegistry:
                 path = alt
         with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
+        if not isinstance(raw, dict):
+            raise ValueError("模型配置根节点必须是对象")
         self.defaults = raw.get("defaults") or {}
-        for model_id, cfg in (raw.get("models") or {}).items():
-            self._models[model_id] = ModelConfig(id=model_id, **cfg)
+        models = raw.get("models") or {}
+        if not isinstance(models, dict):
+            raise ValueError("models 必须是对象")
+        for model_id, cfg in models.items():
+            if not isinstance(model_id, str) or not model_id.strip():
+                raise ValueError("model_id 必须是非空字符串")
+            if not isinstance(cfg, dict):
+                raise ValueError(f"模型 [{model_id}] 配置必须是对象")
+            try:
+                model = ModelConfig(id=model_id, **cfg)
+            except TypeError as exc:
+                raise ValueError(f"模型 [{model_id}] 含未知或非法字段") from exc
+            errors = model.validate()
+            if errors:
+                raise ValueError(f"模型 [{model_id}] 配置无效: {'; '.join(errors)}")
+            if model.api_key:
+                log.warning("模型 [%s] 在配置文件中包含 api_key；请迁移到环境变量", model_id)
+            self._models[model_id] = model
 
     def default(self, key: str, fallback: Any = None) -> Any:
         return self.defaults.get(key, fallback)

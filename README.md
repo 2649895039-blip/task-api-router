@@ -28,6 +28,8 @@ Task → Classifier → Router → Model Registry → Provider
 - **Cost estimation before execution**, circuit breaker & fallback, DAG execution
 - **Local action guard** — blocks destructive shell commands / out-of-workspace writes, no API key needed
 - **Dual-host**: works as a Claude Code plugin + OpenClaw skill
+- **Safer execution**: failed DAG dependencies are skipped, temporary provider errors use exponential backoff, and concurrency is bounded
+- **Privacy-first logs**: task text is redacted by default; use `--log-content` only when local content retention is acceptable
 
 Real example: a Python debugging task routes to `claude-sonnet` for stronger reasoning, while a bulk translation task routes to `deepseek-v4-flash` for lower cost. A destructive shell command is blocked before execution.
 
@@ -125,6 +127,16 @@ task-router --plan "重构整个项目"         # 只有明确需要时才拆 DA
 task-router --version
 ```
 
+生产保护参数：
+
+```bash
+task-router --max-concurrency 4 --max-cost 0.50 --max-tokens 50000 "任务"
+```
+
+`--max-cost` 和 `--max-tokens` 是批次间软上限：达到上限后不再启动下一批 DAG
+任务，但已经发出的并行请求仍可能让最终用量略微超过上限。绝对硬限额应同时在模型供应商侧配置。
+运行日志默认脱敏；只有显式传入 `--log-content` 才保存任务原文。
+
 ## 安装为 Claude Code / OpenClaw 插件
 
 仓库内置**双宿主插件结构**：核心代码只有一份，Claude Code 和 OpenClaw 各用宿主适配层调用。
@@ -186,7 +198,8 @@ task-router --check-action '{"tool":"write","arguments":{"path":"src/app.py"}}' 
 task-router --check-action '{"tool":"shell","arguments":{"command":"git reset --hard"}}' --workspace .
 ```
 
-输出为 JSON，退出码 `0=allow`、`2=confirm`、`3=block`。只读动作直接允许；
+输出为 Claude Code 原生 Hook JSON：`permissionDecision` 为 `allow`、`ask` 或 `deny`。
+阻止动作使用退出码 `2` 兼容只理解退出码的宿主。只读动作直接允许；
 工作区内写入允许；工作区外写入、未知工具和外部副作用要求确认；明显破坏性命令阻止。
 该接口只负责统一判断，各宿主只需把自己的工具名和参数转换成上述 JSON。
 
@@ -312,7 +325,7 @@ data/
 
 ## 当前版本
 
-`v0.2.1` 是首个双宿主公开版本，包含任务路由、静态能力榜单、模型回退、DAG 执行、独立运行日志，以及 Claude Code PreToolUse 动作守卫。发布记录见 [Releases](https://github.com/2649895039-blip/task-api-router/releases)。
+`v0.3.0` 是当前公开版本，包含任务路由、静态能力榜单、模型回退、DAG 执行、独立运行日志、预算与并发限制、隐私优先日志，以及 Claude Code PreToolUse 动作守卫。发布记录见 [Releases](https://github.com/2649895039-blip/task-api-router/releases)。
 
 ## License
 

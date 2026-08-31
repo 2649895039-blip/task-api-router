@@ -4,11 +4,10 @@
 Claude Code 在工具执行前调用本脚本，把工具名/参数转发给
 task_router.action_guard 做本地检查（不消耗 token）。
 
-退出码语义（与 Claude Code PreToolUse 约定一致）：
-  0 = 允许
-  2 = 允许但给模型反馈警告（命中"需确认"规则，如工作区外写入）
-  3 = 阻止（命中破坏性命令）
-脚本异常或无法加载 task_router 时一律放行（exit 0），避免误伤宿主。
+Hook 输出使用 Claude Code 原生的 hookSpecificOutput.permissionDecision：
+  allow = 允许，ask = 请求用户确认，deny = 阻止。
+阻止动作同时返回退出码 2，兼容只理解退出码的宿主。
+脚本异常或无法加载 task_router 时返回 ask（exit 0），避免静默放行未知动作。
 """
 from __future__ import annotations
 
@@ -27,12 +26,26 @@ def main() -> int:
     try:
         data = json.loads(payload)
     except Exception:
-        return 0  # 解析失败放行
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": "动作参数不是有效 JSON，请确认后再执行",
+            }
+        }, ensure_ascii=False))
+        return 0
 
     try:
         from task_router.action_guard import check_action_json
     except Exception as exc:
-        print(f"[task-api-router] 动作守卫未加载，已放行（{type(exc).__name__}）", file=sys.stderr)
+        print(f"[task-api-router] 动作守卫未加载，已转为确认（{type(exc).__name__}）", file=sys.stderr)
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": "动作守卫未加载，请确认后再执行",
+            }
+        }, ensure_ascii=False))
         return 0
 
     # 工作区优先级：payload.cwd > CLAUDE_PROJECT_DIR > 当前目录
@@ -44,11 +57,28 @@ def main() -> int:
     try:
         decision = check_action_json(payload, workspace)
     except Exception as exc:
-        print(f"[task-api-router] 动作守卫解析失败，已放行（{type(exc).__name__}）", file=sys.stderr)
+        print(f"[task-api-router] 动作守卫解析失败，已转为确认（{type(exc).__name__}）", file=sys.stderr)
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": "动作参数无法解析，请确认后再执行",
+            }
+        }, ensure_ascii=False))
         return 0
 
     print(f"[task-api-router] {decision.risk} 风险: {decision.reason}", file=sys.stderr)
-    return decision.exit_code
+    permission = {"allow": "allow", "confirm": "ask", "block": "deny"}.get(
+        decision.decision, "ask"
+    )
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": permission,
+            "permissionDecisionReason": decision.reason,
+        }
+    }, ensure_ascii=False))
+    return decision.exit_code if decision.decision == "block" else 0
 
 
 if __name__ == "__main__":

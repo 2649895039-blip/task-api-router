@@ -7,7 +7,7 @@ import time
 from typing import List, Optional
 
 from ..exceptions import ProviderCallError
-from ..models import ModelConfig, ModelResponse, safe_error_text
+from ..models import ModelConfig, ModelResponse, provider_error_metadata, safe_error_text
 from .base import BaseAdapter
 from .openai_compat import make_http_client
 
@@ -60,7 +60,11 @@ class AnthropicAdapter(BaseAdapter):
             try:
                 resp = client.messages.create(**kwargs)
             except Exception as e:
-                return ModelResponse.fail(model_cfg.id, f"调用失败: {safe_error_text(e)}")
+                status, retryable = provider_error_metadata(e)
+                return ModelResponse.fail(
+                    model_cfg.id, f"调用失败: {safe_error_text(e)}",
+                    status_code=status, retryable=retryable,
+                )
         finally:
             client.close()   # 用完即关，防并发下连接/fd 泄漏
         latency_ms = int((time.time() - start) * 1000)

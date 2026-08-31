@@ -43,30 +43,30 @@ class ActionGuard:
             return self._check_write(args)
         if name in SHELL_TOOLS or any(name.startswith(item) for item in SHELL_TOOLS):
             return self._check_shell(args)
-        return ActionDecision("confirm", "unknown", "未知工具，交给用户或宿主 Agent 确认", 2)
+        return ActionDecision("confirm", "unknown", "未知工具，交给用户或宿主 Agent 确认", 0)
 
     def _check_write(self, args: dict) -> ActionDecision:
         raw_path = next((args.get(k) for k in ("path", "file_path", "target", "destination")
                          if args.get(k)), None)
         if not raw_path:
-            return ActionDecision("confirm", "medium", "写入动作没有明确目标路径", 2)
+            return ActionDecision("confirm", "medium", "写入动作没有明确目标路径", 0)
         target = Path(str(raw_path))
         if not target.is_absolute():
             target = self.workspace / target
         try:
             target.resolve().relative_to(self.workspace)
         except ValueError:
-            return ActionDecision("confirm", "high", "目标位于工作区之外", 2)
+            return ActionDecision("confirm", "high", "目标位于工作区之外", 0)
         return ActionDecision("allow", "medium", "工作区内的明确写入", 0)
 
     def _check_shell(self, args: dict) -> ActionDecision:
         command = str(args.get("command") or args.get("cmd") or args.get("value") or "")
         if not command.strip():
-            return ActionDecision("confirm", "medium", "命令内容为空或无法识别", 2)
+            return ActionDecision("confirm", "medium", "命令内容为空或无法识别", 0)
         if DESTRUCTIVE.search(command):
-            return ActionDecision("block", "high", "检测到破坏性命令", 3)
+            return ActionDecision("block", "high", "检测到破坏性命令", 2)
         if EXTERNAL_EFFECT.search(command):
-            return ActionDecision("confirm", "high", "命令可能向外部系统发送数据或产生副作用", 2)
+            return ActionDecision("confirm", "high", "命令可能向外部系统发送数据或产生副作用", 0)
         return ActionDecision("allow", "medium", "未命中本地高风险规则", 0)
 
 

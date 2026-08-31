@@ -10,7 +10,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 from .allocator import Allocator, Allocation
 from .client import ModelClient
@@ -53,6 +53,7 @@ class ExecutionReport:
     total_tokens: int = 0
     routing_cost: float = 0.0
     routing_tokens: int = 0
+    budget_exhausted: bool = False
 
     def compute(self):
         self.total_cost = self.routing_cost + sum(t.response.cost for t in self.results.values())
@@ -78,10 +79,19 @@ class ExecutionReport:
 
 
 class DAGExecutor:
-    def __init__(self, client: ModelClient, allocator: Allocator, max_retries: int = 2):
+    def __init__(self, client: ModelClient, allocator: Allocator, max_retries: int = 2,
+                 max_concurrency: int = 4, retry_base_delay: float = 0.5,
+                 max_provider_retries: int = 2,
+                 max_cost_usd: Optional[float] = None,
+                 max_total_tokens: Optional[int] = None):
         self.client = client
         self.allocator = allocator
         self.max_retries = max_retries      # 失败后最多再沿榜单试几个模型
+        self.max_concurrency = max(1, max_concurrency)
+        self.retry_base_delay = max(0.0, retry_base_delay)
+        self.max_provider_retries = max(0, max_provider_retries)
+        self.max_cost_usd = max_cost_usd
+        self.max_total_tokens = max_total_tokens
         # 注意：不在实例上持有跨 run 的熔断状态（execute_async 内部用局部变量），
         # 否则同一个 DAGExecutor 被并发复用时会互相清空/污染熔断记录。
 
@@ -90,6 +100,7 @@ class DAGExecutor:
 
     async def execute_async(self, plan: Plan, context: str = "", strategy: str = "quality") -> ExecutionReport:
         unhealthy: Set[str] = set()   # 本次 run 内熔断的模型（run 级局部变量，可安全并发复用实例）
+        semaphore = asyncio.Semaphore(self.max_concurrency)
         allocations = {t.id: self.allocator.allocate(t, strategy=strategy) for t in plan.tasks}
         results: Dict[int, TaskResult] = {}
         remaining_deps = {t.id: list(t.depends_on) for t in plan.tasks}
@@ -101,8 +112,41 @@ class DAGExecutor:
                 log.warning("计划存在坏依赖或死锁，剩余子任务强制串行执行")
                 ready = [remaining[next(iter(remaining))]]
 
+            blocked = []
+            for task in ready:
+                failed_deps = [dep for dep in task.depends_on
+                               if dep in results and not results[dep].response.success]
+                if failed_deps:
+                    results[task.id] = TaskResult(
+                        task.id, "", ModelResponse.fail(
+                            "", f"跳过：上游依赖失败 {failed_deps}"
+                        )
+                    )
+                    blocked.append(task)
+            for task in blocked:
+                del remaining[task.id]
+                for deps in remaining_deps.values():
+                    if task.id in deps:
+                        deps.remove(task.id)
+            ready = [task for task in ready if task not in blocked]
+            if not ready:
+                continue
+
+            spent_cost = sum(item.response.cost for item in results.values())
+            spent_tokens = sum(item.response.total_tokens() for item in results.values())
+            over_cost = self.max_cost_usd is not None and spent_cost >= self.max_cost_usd
+            over_tokens = self.max_total_tokens is not None and spent_tokens >= self.max_total_tokens
+            if over_cost or over_tokens:
+                reason = "跳过：本次运行预算已达到上限"
+                for task in list(remaining.values()):
+                    results[task.id] = TaskResult(task.id, "", ModelResponse.fail("", reason))
+                    del remaining[task.id]
+                report = ExecutionReport(plan, allocations, results, budget_exhausted=True)
+                return report.compute()
+
             done = await asyncio.gather(
-                *(self._run_task(t, allocations[t.id], context, results, strategy, unhealthy) for t in ready),
+                *(self._run_task(t, allocations[t.id], context, results, strategy, unhealthy,
+                                 semaphore) for t in ready),
                 return_exceptions=True,
             )
             for t, raw in zip(ready, done):
@@ -125,7 +169,7 @@ class DAGExecutor:
 
     async def _run_task(self, subtask: SubTask, alloc: Allocation, context: str,
                         results: Dict[int, TaskResult], strategy: str,
-                        unhealthy: Set[str]) -> TaskResult:
+                        unhealthy: Set[str], semaphore: asyncio.Semaphore) -> TaskResult:
         # 分配结果没有可用模型（空 id）→ 直接短路失败，不发请求
         if not alloc.model_id:
             return TaskResult(subtask.id, "", ModelResponse.fail("", alloc.reason or "无可用模型"),
@@ -138,7 +182,12 @@ class DAGExecutor:
         if alloc.model_id in unhealthy:
             resp = ModelResponse.fail(alloc.model_id, "模型已熔断（本次 run 内先前调用失败）")
         else:
-            resp = await asyncio.to_thread(self.client.chat, alloc.model_id, messages, max_tokens=1024)
+            resp = await self._call(alloc.model_id, messages, semaphore)
+            for retry_index in range(self.max_provider_retries):
+                if resp.success or not resp.retryable:
+                    break
+                await asyncio.sleep(self.retry_base_delay * (2 ** retry_index))
+                resp = await self._call(alloc.model_id, messages, semaphore)
             if resp.success:
                 return TaskResult(subtask.id, alloc.model_id, resp, attempted)
 
@@ -153,12 +202,18 @@ class DAGExecutor:
             if not nxt.model_id or nxt.model_id in attempted:
                 break
             attempted.append(nxt.model_id)
-            last_mid, last_resp = nxt.model_id, await asyncio.to_thread(
-                self.client.chat, nxt.model_id, messages, max_tokens=1024)
+            last_mid, last_resp = nxt.model_id, await self._call(nxt.model_id, messages, semaphore)
             if last_resp.success:
                 return TaskResult(subtask.id, last_mid, last_resp, attempted)
             unhealthy.add(last_mid)
         return TaskResult(subtask.id, last_mid, last_resp, attempted)
+
+    async def _call(self, model_id: str, messages: List[dict],
+                    semaphore: asyncio.Semaphore) -> ModelResponse:
+        async with semaphore:
+            return await asyncio.to_thread(
+                self.client.chat, model_id, messages, max_tokens=1024
+            )
 
     def _build_messages(self, subtask: SubTask, context: str,
                         results: Dict[int, TaskResult]) -> List[dict]:

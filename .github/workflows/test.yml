@@ -7,9 +7,10 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
@@ -17,4 +18,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e .
+      - run: python -m unittest tests.test_routing -v
+      - run: python scripts/verify_release.py
+
+  minimum-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install pyyaml==6.0.1 openai==1.0.0 anthropic==0.40.0 httpx==0.27.0
+      - run: pip install -e . --no-deps
       - run: python -m unittest tests.test_routing -v

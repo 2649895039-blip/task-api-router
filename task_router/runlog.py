@@ -11,6 +11,7 @@ import json
 import os
 import re
 import time
+import secrets
 from typing import List, Optional
 
 from .executor import ExecutionReport
@@ -22,9 +23,18 @@ log = logging.getLogger(__name__)
 
 
 class RunLog:
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str, include_content: bool = False):
         self.runs_dir = os.path.join(data_dir, "runs")
+        self.include_content = include_content
         os.makedirs(self.runs_dir, exist_ok=True)
+        try:
+            os.chmod(data_dir, 0o700)
+            os.chmod(self.runs_dir, 0o700)
+            for name in os.listdir(self.runs_dir):
+                if name.endswith(".json"):
+                    os.chmod(os.path.join(self.runs_dir, name), 0o600)
+        except OSError:
+            pass
 
     def save_run(self, task: str, plan: Plan, report: ExecutionReport, record: dict) -> str:
         """把一次运行写成独立 JSON 日志，返回 run_id。
@@ -38,7 +48,7 @@ class RunLog:
         # 后再构造内容写入。已存在则追加序号重试。
         while True:
             try:
-                fd = os.open(self._path(run_id), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+                fd = os.open(self._path(run_id), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 break
             except FileExistsError:
                 n += 1
@@ -46,12 +56,13 @@ class RunLog:
         entry = {
             "run_id": run_id,
             "timestamp": time.time(),
-            "task": task,
+            "task": task if self.include_content else "[redacted]",
             "total_cost": round(report.total_cost, 6),
             "total_tokens": report.total_tokens,
             "routing": record.get("routing", {}),
             "subtasks": [
-                {"id": t.id, "name": t.name, "capability": t.capability, "depends_on": t.depends_on}
+                {"id": t.id, "name": t.name if self.include_content else "[redacted]",
+                 "capability": t.capability, "depends_on": t.depends_on}
                 for t in plan.tasks
             ],
             "results": record.get("tasks", []),
@@ -87,7 +98,4 @@ class RunLog:
         """run_id = 时间戳(秒+毫秒) + 任务片段，天然唯一且可读。"""
         ts = time.strftime("%Y%m%d-%H%M%S", time.localtime())
         millis = f"{int(time.time() * 1000) % 1000:03d}"
-        slug = re.sub(r"[_\W]+", "_", task, flags=re.UNICODE)[:20].strip("_")
-        if not slug:
-            slug = "task"
-        return f"{ts}-{millis}-{slug}"
+        return f"{ts}-{millis}-{secrets.token_hex(3)}"

@@ -77,6 +77,8 @@ def _print_result(r) -> None:
     print(f"📄 运行日志: {r.run_id}")
     print(f"📊 token: {r.report.total_tokens:,} | 成本: ${r.report.total_cost:.6f}")
     print(f"   子任务: {len(r.plan.tasks)} 个")
+    if r.report.budget_exhausted:
+        print("⚠️ 已达到本次运行预算软上限，后续任务已跳过")
     for t in r.plan.tasks:
         tr = r.report.results.get(t.id)
         if tr is None:
@@ -87,11 +89,11 @@ def _print_result(r) -> None:
     print("=" * 60)
 
 
-def _make_orchestrator(config: str, data: str):
+def _make_orchestrator(config: str, data: str, **kwargs):
     from .orchestrator import RouterOrchestrator
 
     os.makedirs(data, exist_ok=True)
-    return RouterOrchestrator(config, data)
+    return RouterOrchestrator(config, data, **kwargs)
 
 
 def _cmd_list(orch) -> None:
@@ -100,7 +102,8 @@ def _cmd_list(orch) -> None:
     for rid in runs:
         log = orch.runlog.load_run(rid)
         if log:
-            print(f"   {rid}  | {log['task'][:40]} | {log['total_tokens']}t | ${log['total_cost']:.6f}")
+            task = log.get("task", "[redacted]")
+            print(f"   {rid}  | {task[:40]} | {log['total_tokens']}t | ${log['total_cost']:.6f}")
 
 
 def _cmd_show(orch, run_id: str) -> None:
@@ -174,6 +177,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--show", metavar="RUN_ID", help="查看某个运行日志")
     parser.add_argument("--models", action="store_true", help="列出已注册模型")
     parser.add_argument("--plan", action="store_true", help="显式调用 Planner 拆分复杂任务（默认不调用）")
+    parser.add_argument("--max-concurrency", type=int, default=4, help="模型调用最大并发数（默认 4）")
+    parser.add_argument("--max-cost", type=float, help="单次运行成本软上限（美元，达到后停止下一批任务）")
+    parser.add_argument("--max-tokens", type=int, help="单次运行 token 软上限（达到后停止下一批任务）")
+    parser.add_argument("--log-content", action="store_true", help="在本地日志保存任务原文（默认脱敏）")
     parser.add_argument("--check-action", metavar="JSON", help="本地检查 Agent 工具动作；传 - 时从 stdin 读取")
     parser.add_argument("--workspace", default=os.getcwd(), help="动作检查允许写入的工作区")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -192,7 +199,17 @@ def main(argv: list[str] | None = None) -> int:
         return decision.exit_code
 
     _auto_keys()
-    orch = _make_orchestrator(args.config, args.data)
+    if args.max_concurrency < 1 or args.max_concurrency > 64:
+        parser.error("--max-concurrency 必须在 1..64 之间")
+    if args.max_cost is not None and args.max_cost <= 0:
+        parser.error("--max-cost 必须大于 0")
+    if args.max_tokens is not None and args.max_tokens <= 0:
+        parser.error("--max-tokens 必须大于 0")
+    orch = _make_orchestrator(
+        args.config, args.data, max_concurrency=args.max_concurrency,
+        max_cost_usd=args.max_cost, max_total_tokens=args.max_tokens,
+        log_content=args.log_content,
+    )
 
     if args.list:
         _cmd_list(orch)
