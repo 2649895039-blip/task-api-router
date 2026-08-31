@@ -32,7 +32,7 @@ def main() -> int:
                 "permissionDecision": "ask",
                 "permissionDecisionReason": "动作参数不是有效 JSON，请确认后再执行",
             }
-        }, ensure_ascii=False))
+        }, ensure_ascii=True))
         return 0
 
     try:
@@ -45,7 +45,7 @@ def main() -> int:
                 "permissionDecision": "ask",
                 "permissionDecisionReason": "动作守卫未加载，请确认后再执行",
             }
-        }, ensure_ascii=False))
+        }, ensure_ascii=True))
         return 0
 
     # 工作区优先级：payload.cwd > CLAUDE_PROJECT_DIR > 当前目录
@@ -64,7 +64,7 @@ def main() -> int:
                 "permissionDecision": "ask",
                 "permissionDecisionReason": "动作参数无法解析，请确认后再执行",
             }
-        }, ensure_ascii=False))
+        }, ensure_ascii=True))
         return 0
 
     print(f"[task-api-router] {decision.risk} 风险: {decision.reason}", file=sys.stderr)
@@ -77,7 +77,7 @@ def main() -> int:
             "permissionDecision": permission,
             "permissionDecisionReason": decision.reason,
         }
-    }, ensure_ascii=False))
+    }, ensure_ascii=True))
     return decision.exit_code if decision.decision == "block" else 0
 
 
