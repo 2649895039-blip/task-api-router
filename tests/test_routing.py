@@ -54,6 +54,15 @@ def make_registry(tmp: str) -> ModelRegistry:
 
 
 class RoutingTests(unittest.TestCase):
+    def test_offline_benchmark_is_deterministic_and_explicitly_illustrative(self):
+        from benchmark_route import build_report
+        report = build_report()
+        self.assertEqual(report["task_count"], 5)
+        self.assertEqual(report["mode"], "illustrative_offline")
+        self.assertGreater(report["baseline_cost_usd"], report["routed_cost_usd"])
+        self.assertIn("not a production benchmark", report["limitations"])
+        self.assertEqual(report, build_report())
+
     def test_orchestrator_rejects_empty_or_oversized_tasks_before_provider_call(self):
         from task_router.orchestrator import RouterOrchestrator
         with tempfile.TemporaryDirectory() as tmp:

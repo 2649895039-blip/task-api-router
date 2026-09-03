@@ -17,6 +17,7 @@ REQUIRED_FILES = (
     "SECURITY.md",
     "NOTICE",
     "TRADEMARKS.md",
+    "benchmark_route.py",
 )
 
 def _version_from_init(root: Path) -> str:

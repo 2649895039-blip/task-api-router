@@ -15,7 +15,7 @@ See [NOTICE](NOTICE) and [TRADEMARKS.md](TRADEMARKS.md).
 > 路由核心与具体 provider 完全解耦，可自由接入任意模型。
 > 双宿主开箱即用：**Claude Code 插件 + OpenClaw Skill**，内置工具动作守卫（拦截危险 shell 命令 / 越界写入）。
 
-适合需要在多个大模型之间自动分配任务、控制成本，或给 Agent 工具调用增加本地风险检查的开发者。核心逻辑在本地运行；API key 只读取你自己的环境变量。
+如果你在 Claude Code 或 OpenClaw 中让所有任务都使用同一个昂贵模型，这个插件会按任务类型选择你已配置的模型，失败时自动回退，并在工具执行前做本地风险检查。核心逻辑在本地运行；API key 只读取你自己的环境变量。
 
 ---
 
@@ -23,7 +23,7 @@ See [NOTICE](NOTICE) and [TRADEMARKS.md](TRADEMARKS.md).
 
 **task-api-router** routes every AI task to the best configured model — control API costs, and guard agent actions before they touch your workspace.
 
-You need this when one model is too expensive for simple work, another is better at coding or reasoning, and agent tools must be checked before running risky shell commands or writing outside the project.
+Use it when one model is too expensive for simple work, another is better at coding or reasoning, and agent tools must be checked before risky shell commands or writes outside the project.
 
 ```
 Task → Classifier → Router → Model Registry → Provider
@@ -39,7 +39,7 @@ Task → Classifier → Router → Model Registry → Provider
 
 Real example: a Python debugging task routes to `claude-sonnet` for stronger reasoning, while a bulk translation task routes to `deepseek-v4-flash` for lower cost. A destructive shell command is blocked before execution.
 
-**See the value before adding an API key:** the offline demo prints the routed model, estimated cost, an always-strongest baseline, and the local safety decision. See [the value demo](docs/value-demo.md).
+**See the value before adding an API key:** run the offline routing/safety demo and the five-task cost benchmark. Both make no provider calls and label their numbers as illustrative. See [the value demo](docs/value-demo.md).
 
 **Quick start (offline demo, no API key):**
 
@@ -48,6 +48,7 @@ git clone https://github.com/2649895039-blip/task-api-router.git
 cd task-api-router
 python -m pip install -e .
 python demo_route.py
+python benchmark_route.py
 ```
 
 Full documentation in Chinese below. Contributions & issues welcome.

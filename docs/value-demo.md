@@ -6,6 +6,10 @@ This is a deterministic, offline demo. It makes no API calls and uses the sample
 python demo_route.py
 ```
 
+For a machine-readable five-task cost comparison, run `python benchmark_route.py`.
+It writes `benchmark-report.json` and makes no provider calls. The numbers are
+fixed illustrative fixtures, not a production savings claim.
+
 It demonstrates three decisions:
 
 1. A debugging task goes to the stronger reasoning model.
