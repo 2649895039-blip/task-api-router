@@ -30,3 +30,14 @@ The practical tradeoff is explicit:
 | Task API Router | Task | Models, rankings, costs | Action guard hook |
 
 The router is intentionally local-first: common task types are classified without an extra model call, and ambiguous tasks can use one short classification call before execution.
+
+## Try routing without spending
+
+After install, preview the route decision offline:
+
+```bash
+task-router --route "写一个 Python 函数解析 JSON"
+task-router --route "批量翻译以下 50 条产品标题" --json
+```
+
+This uses only local keywords and the ranking file. It never calls a provider. After real runs, `task-router --stats` summarizes local `history.jsonl` cost and model distribution (baseline comparison is illustrative, not a savings promise).

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Install self-check
+    url: https://github.com/2649895039-blip/task-api-router#30-秒验证
+    about: Run task-router --doctor and the offline demo before opening a setup issue.
