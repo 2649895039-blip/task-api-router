@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 - 2026-09-07
+
+- Add `--route` offline dry-run: show capability, strategy, and target model without any provider call.
+- Add `--doctor` install self-check (Python version, config, models, ranking, data dir, hook).
+- Add `--stats` local cost summary from `history.jsonl` (no API calls; baseline comparison is illustrative only).
+- Add `--json` output for `--route`, `--doctor`, and `--stats`.
+- Add `CONTRIBUTING.md` and GitHub issue templates for community onboarding.
+- Document install self-check and dry-run in README quick start.
+
 ## 0.3.0 - 2026-08-31
 
 - Use native Claude Code `allow` / `ask` / `deny` hook decisions.

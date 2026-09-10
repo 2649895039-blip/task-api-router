@@ -144,7 +144,8 @@ class RoutingTests(unittest.TestCase):
         payload = {"tool_name": "Bash", "tool_input": {"command": "git reset --hard"}}
         result = subprocess.run(
             [sys.executable, str(hook)], input=json.dumps(payload), text=True,
-            capture_output=True, check=False,
+            capture_output=True, check=False, encoding="utf-8", errors="replace",
+            env={**__import__("os").environ, "PYTHONUTF8": "1"},
         )
         self.assertEqual(2, result.returncode)
         output = json.loads(result.stdout)
@@ -153,7 +154,8 @@ class RoutingTests(unittest.TestCase):
         payload["tool_input"]["command"] = "echo hello"
         result = subprocess.run(
             [sys.executable, str(hook)], input=json.dumps(payload), text=True,
-            capture_output=True, check=False,
+            capture_output=True, check=False, encoding="utf-8", errors="replace",
+            env={**__import__("os").environ, "PYTHONUTF8": "1"},
         )
         self.assertEqual(0, result.returncode)
         output = json.loads(result.stdout)
@@ -311,6 +313,196 @@ class RoutingTests(unittest.TestCase):
             }), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "环境变量"):
                 ModelRegistry(str(path))
+
+    def test_route_only_is_offline_and_allocates_model(self):
+        from task_router.orchestrator import RouterOrchestrator
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "models.yaml"
+            config.write_text(yaml.safe_dump({
+                "defaults": {"executor_default": "cheap"},
+                "models": {
+                    "cheap": {
+                        "base_url": "https://example.test/v1",
+                        "api_key_env": "TEST_ROUTER_KEY",
+                        "capabilities": ["code", "general", "translation", "bulk"],
+                        "cost_per_1k_in": 0.1, "cost_per_1k_out": 0.2,
+                    },
+                    "strong": {
+                        "base_url": "https://example.test/v1",
+                        "api_key_env": "TEST_ROUTER_KEY",
+                        "capabilities": ["code", "reasoning", "general"],
+                        "cost_per_1k_in": 1.0, "cost_per_1k_out": 2.0,
+                    },
+                },
+            }), encoding="utf-8")
+            import os
+            os.environ["TEST_ROUTER_KEY"] = "x"
+            ranking = Path(tmp) / "ranking.yaml"
+            ranking.write_text(yaml.safe_dump({
+                "capabilities": {
+                    "code": [{"model": "strong", "rank": 1}, {"model": "cheap", "rank": 2}],
+                    "translation": [{"model": "cheap", "rank": 1}],
+                }
+            }), encoding="utf-8")
+            orch = RouterOrchestrator(str(config), tmp)
+            orch.allocator = __import__("task_router.allocator", fromlist=["Allocator"]).Allocator(
+                orch.registry, str(ranking)
+            )
+            preview = orch.route_only("写一个 Python 函数解析 JSON")
+            self.assertFalse(preview.classifier_would_call)
+            self.assertEqual("code", preview.decision.capability)
+            self.assertEqual("local_script", preview.decision.source)
+            # Simple short code tasks use the cost strategy → cheapest configured model.
+            self.assertEqual("cost", preview.decision.strategy)
+            self.assertEqual("cheap", preview.model_id)
+
+            complex_preview = orch.route_only(
+                "重构整个项目代码，先写一个解析模块，然后调试异常，最后修复 bug"
+            )
+            self.assertEqual("code", complex_preview.decision.capability)
+            self.assertEqual("complex", complex_preview.decision.difficulty)
+            self.assertEqual("quality", complex_preview.decision.strategy)
+            self.assertEqual("strong", complex_preview.model_id)
+
+            ambiguous = orch.route_only("帮我处理一下这个")
+            self.assertTrue(ambiguous.classifier_would_call)
+            self.assertEqual("general", ambiguous.decision.capability)
+            self.assertEqual("", ambiguous.model_id)
+            self.assertIn("分类", ambiguous.allocation_reason)
+
+    def test_doctor_reports_core_checks(self):
+        from task_router.doctor import run_doctor
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "models.example.yaml"
+            config.write_text(yaml.safe_dump({
+                "models": {
+                    "demo": {
+                        "base_url": "https://example.test/v1",
+                        "api_key_env": "TEST_ROUTER_KEY_MISSING",
+                        "capabilities": ["general"],
+                    }
+                }
+            }), encoding="utf-8")
+            ranking = Path(tmp) / "ranking.yaml"
+            ranking.write_text("capabilities: {}\n", encoding="utf-8")
+            package_dir = Path(__file__).parents[1] / "task_router"
+            checks = run_doctor(str(config), str(Path(tmp) / "data"), package_dir=str(package_dir))
+            names = {c.name for c in checks}
+            self.assertIn("python_version", names)
+            self.assertIn("model_config", names)
+            self.assertIn("models_registered", names)
+            self.assertIn("data_dir", names)
+            self.assertIn("offline_demo", names)
+            by_name = {c.name: c for c in checks}
+            self.assertTrue(by_name["python_version"].ok)
+            self.assertTrue(by_name["models_registered"].ok)
+            self.assertFalse(by_name["models_configured"].ok)
+
+    def test_doctor_treats_missing_repository_assets_as_normal_for_wheel_install(self):
+        from task_router.doctor import run_doctor
+        with tempfile.TemporaryDirectory() as tmp:
+            package_dir = Path(tmp) / "site" / "task_router"
+            config_dir = package_dir / "config"
+            config_dir.mkdir(parents=True)
+            (config_dir / "models.example.yaml").write_text(yaml.safe_dump({
+                "models": {"demo": {
+                    "base_url": "https://example.test/v1",
+                    "api_key": "test-only",
+                    "capabilities": ["general"],
+                }}
+            }), encoding="utf-8")
+            (config_dir / "ranking.yaml").write_text("capabilities: {}\n", encoding="utf-8")
+            checks = run_doctor(
+                str(config_dir / "models.example.yaml"),
+                str(Path(tmp) / "data"),
+                package_dir=str(package_dir),
+            )
+            by_name = {c.name: c for c in checks}
+            self.assertTrue(by_name["action_guard_hook"].ok)
+            self.assertTrue(by_name["offline_demo"].ok)
+            self.assertIn("--route", by_name["offline_demo"].detail)
+
+    def test_route_json_stdout_is_machine_readable_with_auto_key_config(self):
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            key_config = Path(tmp) / "keys.json"
+            key_config.write_text(json.dumps({
+                "demo": {"api_key": "test-only", "api_key_env": "ROUTER_JSON_TEST_KEY"}
+            }), encoding="utf-8")
+            env = os.environ.copy()
+            env["TASK_ROUTER_API_CONFIG"] = str(key_config)
+            env.pop("ROUTER_JSON_TEST_KEY", None)
+            result = subprocess.run(
+                [sys.executable, "-m", "task_router", "--route", "写一个 Python 函数", "--json"],
+                cwd=Path(__file__).parents[1], env=env, capture_output=True, check=False,
+            )
+            stdout = result.stdout.decode("utf-8")
+            stderr = result.stderr.decode("utf-8")
+            self.assertEqual(0, result.returncode, stderr)
+            payload = json.loads(stdout)
+            self.assertEqual("code", payload["capability"])
+
+    def test_stats_aggregates_history_without_provider_calls(self):
+        import os
+        from task_router.cli import compute_stats
+        with tempfile.TemporaryDirectory() as tmp:
+            history = Path(tmp) / "history.jsonl"
+            records = [
+                {
+                    "total_cost": 0.01,
+                    "total_tokens": 1000,
+                    "routing": {"capability": "code", "strategy": "quality", "source": "local_script"},
+                    "tasks": [
+                        {"model_id": "strong", "success": True, "cost": 0.01, "tokens": 1000},
+                    ],
+                },
+                {
+                    "total_cost": 0.002,
+                    "total_tokens": 500,
+                    "routing": {"capability": "translation", "strategy": "cost", "source": "local_script"},
+                    "tasks": [
+                        {"model_id": "cheap", "success": True, "cost": 0.002, "tokens": 500},
+                    ],
+                },
+            ]
+            history.write_text(
+                "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
+                encoding="utf-8",
+            )
+            registry = make_registry(tmp)
+            # Force configured models for baseline comparison
+            os.environ["X"] = "x"
+            for mid in registry.list():
+                cfg = registry.get(mid)
+                cfg.api_key = "x"
+            stats = compute_stats(str(history), registry)
+            self.assertEqual(2, stats["runs"])
+            self.assertAlmostEqual(0.012, stats["total_cost_usd"], places=6)
+            self.assertEqual(1500, stats["total_tokens"])
+            self.assertEqual(2, stats["success_subtasks"])
+            self.assertEqual(0, stats["failed_subtasks"])
+            self.assertIn("code", stats["by_capability"])
+            self.assertIn("translation", stats["by_capability"])
+            self.assertIn("strong", stats["by_model"])
+            self.assertIn("cheap", stats["by_model"])
+            self.assertEqual(2, stats["by_source"].get("local_script"))
+            self.assertAlmostEqual(3.0, stats["illustrative_baseline_cost_usd"], places=6)
+            missing = compute_stats(str(Path(tmp) / "missing.jsonl"), None)
+            self.assertEqual("no_history", missing.get("error"))
+
+    def test_stats_skips_structurally_invalid_history_records(self):
+        from task_router.cli import compute_stats
+        with tempfile.TemporaryDirectory() as tmp:
+            history = Path(tmp) / "history.jsonl"
+            history.write_text(
+                '{"total_cost":"bad","total_tokens":100,"routing":{},"tasks":[]}\n'
+                '{"total_cost":0.25,"total_tokens":50,"routing":{},"tasks":[]}\n',
+                encoding="utf-8",
+            )
+            stats = compute_stats(str(history))
+            self.assertEqual(1, stats["runs"])
+            self.assertEqual(1, stats["skipped_records"])
+            self.assertEqual(0.25, stats["total_cost_usd"])
 
 
 if __name__ == "__main__":

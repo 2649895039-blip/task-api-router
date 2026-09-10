@@ -14,9 +14,11 @@ REQUIRED_FILES = (
     "openclaw/skills/task-router/SKILL.md",
     "config/models.example.yaml",
     "task_router/config/models.example.yaml",
+    "task_router/doctor.py",
     "SECURITY.md",
     "NOTICE",
     "TRADEMARKS.md",
+    "CONTRIBUTING.md",
     "benchmark_route.py",
 )
 

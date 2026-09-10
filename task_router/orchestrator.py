@@ -37,6 +37,31 @@ class RunResult:
     decision: RouteDecision
 
 
+@dataclass
+class RoutePreview:
+    """Offline routing preview: classification + model choice, no provider call."""
+    task: str
+    pre: dict
+    decision: RouteDecision
+    model_id: str
+    allocation_reason: str
+    classifier_would_call: bool
+
+    def to_dict(self) -> dict:
+        return {
+            "task": self.task[:200],
+            "capability": self.decision.capability,
+            "difficulty": self.decision.difficulty,
+            "strategy": self.decision.strategy,
+            "source": self.decision.source,
+            "reason": self.decision.reason,
+            "model_id": self.model_id,
+            "allocation_reason": self.allocation_reason,
+            "classifier_would_call": self.classifier_would_call,
+            "pre": self.pre,
+        }
+
+
 class RouterOrchestrator:
     def __init__(self, config_path: str, data_dir: str, *, max_concurrency: int = 4,
                  max_cost_usd: Optional[float] = None,
@@ -54,6 +79,45 @@ class RouterOrchestrator:
         self.executor = DAGExecutor(
             self.client, self.allocator, max_concurrency=max_concurrency,
             max_cost_usd=max_cost_usd, max_total_tokens=max_total_tokens,
+        )
+
+    def route_only(self, task: str) -> RoutePreview:
+        """Show routing decision without executing or calling any provider.
+
+        Fully offline: local keyword preclassify + ranking/cost allocation.
+        Ambiguous tasks are marked classifier_would_call so users know a real
+        run may spend one short classification call first.
+        """
+        if not isinstance(task, str) or not task.strip():
+            raise ValueError("任务不能为空")
+        if len(task) > 100_000:
+            raise ValueError("任务过长（最多 100000 个字符）")
+        pre = preclassify(task)
+        local = self.screen.local_decide(task)
+        if local is not None:
+            decision = local
+            classifier_would_call = False
+        else:
+            decision = self.screen.dry_fallback(task)
+            classifier_would_call = True
+        if classifier_would_call:
+            model_id = ""
+            allocation_reason = "待真实执行的在线短分类完成后确定"
+        else:
+            subtask = SubTask(
+                id=1, name=task, description=task, depends_on=[],
+                capability=decision.capability,
+            )
+            allocation = self.allocator.allocate(subtask, strategy=decision.strategy)
+            model_id = allocation.model_id
+            allocation_reason = allocation.reason
+        return RoutePreview(
+            task=task,
+            pre=pre,
+            decision=decision,
+            model_id=model_id,
+            allocation_reason=allocation_reason,
+            classifier_would_call=classifier_would_call,
         )
 
     def run(self, task: str, use_planner: bool = False) -> RunResult:

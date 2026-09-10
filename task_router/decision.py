@@ -60,6 +60,14 @@ class TaskScreen:
         self.client = client
         self.registry = registry
 
+    def local_decide(self, task: str) -> Optional[RouteDecision]:
+        """Local-only decision; returns None when keywords are ambiguous."""
+        return self._local_decision(task)
+
+    def dry_fallback(self, task: str) -> RouteDecision:
+        """Offline preview decision when local rules are not confident."""
+        return self._fallback(task, "本地规则无法确定；真实执行时会先调用最便宜的已配置模型做一次短分类")
+
     def decide(self, task: str) -> RouteDecision:
         local = self._local_decision(task)
         if local is not None:

@@ -31,11 +31,13 @@ Task → Classifier → Router → Model Registry → Provider
 
 - **Zero-token local classification** where possible; cheap-model fallback for ambiguous tasks
 - **Configurable model rankings** (YAML) — no code changes to add a model
+- **Offline dry-run (`--route`)** — preview the model choice with zero provider calls
 - **Cost estimation before execution**, circuit breaker & fallback, DAG execution
 - **Local action guard** — blocks destructive shell commands / out-of-workspace writes, no API key needed
 - **Dual-host**: works as a Claude Code plugin + OpenClaw skill
 - **Safer execution**: failed DAG dependencies are skipped, temporary provider errors use exponential backoff, and concurrency is bounded
 - **Privacy-first logs**: task text is redacted by default; use `--log-content` only when local content retention is acceptable
+- **Onboarding tools**: `--doctor` self-check and `--stats` local cost summary
 
 Real example: a Python debugging task routes to `claude-sonnet` for stronger reasoning, while a bulk translation task routes to `deepseek-v4-flash` for lower cost. A destructive shell command is blocked before execution.
 
@@ -49,9 +51,10 @@ cd task-api-router
 python -m pip install -e .
 python demo_route.py
 python benchmark_route.py
+python -m task_router --route "写一个 Python 函数解析 JSON"
 ```
 
-Full documentation in Chinese below. Contributions & issues welcome.
+Full documentation in Chinese below. Contributions & issues welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 30 秒验证
 
@@ -60,10 +63,12 @@ git clone https://github.com/2649895039-blip/task-api-router.git
 cd task-api-router
 python -m pip install -e .
 python -m task_router --version
+python -m task_router --doctor
 python -m task_router --models
+python -m task_router --route "写一个 Python 函数解析 JSON"
 ```
 
-没有配置 API key 也可以先运行 `--version`、`--models` 和动作守卫；真正执行任务前，再按下方说明配置模型。
+没有配置 API key 也可以先运行 `--version`、`--doctor`、`--models` 和 `--route` 干跑试算；真正执行任务前，再按下方说明配置模型。有历史流水后可用 `--stats` 看本地成本汇总。
 
 ## 设计原则
 
@@ -130,9 +135,14 @@ task-router                              # 交互模式（每条输入=一次任
 task-router --list                       # 列出所有运行日志
 task-router --show <run_id>              # 查看某个运行日志
 task-router --models                     # 列出已注册模型
+task-router --route "翻译一段文案"        # 干跑试算：不执行、不调 API，只看会路由到谁
+task-router --doctor                     # 安装/配置自检（无需 API key）
+task-router --stats                      # 汇总本地 history.jsonl 成本与路由分布
 task-router --plan "重构整个项目"         # 只有明确需要时才拆 DAG
 task-router --version
 ```
+
+`--route` / `--doctor` / `--stats` 可加 `--json` 输出机器可读结果，方便脚本或演示。
 
 生产保护参数：
 
@@ -291,7 +301,7 @@ output tokens 的廉价分类调用；显式使用 `--plan` 时才增加规划�
 ```
 task_router/               # 路由核心（与具体宿主解耦）
 ├── cli.py               # 插件 CLI（task-router 命令 / python -m task_router）
-├── orchestrator.py      # 全链路串联（含 RunResult）
+├── orchestrator.py      # 全链路串联（含 RunResult / RoutePreview）
 ├── preclassify.py       # 免费关键词预判（0 token，只做参考）
 ├── decision.py          # 任务筛选：本地规则或最便宜 API 短分类 → RouteDecision
 ├── planner.py           # 任务拆解（可选，--plan 时调用）
@@ -301,6 +311,7 @@ task_router/               # 路由核心（与具体宿主解耦）
 ├── models.py            # ModelConfig / ModelResponse / safe_error_text
 ├── client.py            # 统一调用入口（按 model_id 路由到对应 adapter）
 ├── action_guard.py      # Agent 动作本地拦截（--check-action）
+├── doctor.py            # 安装自检（--doctor，无需 API）
 ├── reporter.py          # 统一流水（history.jsonl）
 ├── runlog.py            # 独立运行日志（data/runs/<run_id>.json）
 ├── config/              # 随包发布的公开模板（models.example.yaml / ranking.yaml）
@@ -332,7 +343,9 @@ data/
 
 ## 当前版本
 
-`v0.3.0` 是当前公开版本，包含任务路由、静态能力榜单、模型回退、DAG 执行、独立运行日志、预算与并发限制、隐私优先日志，以及 Claude Code PreToolUse 动作守卫。发布记录见 [Releases](https://github.com/2649895039-blip/task-api-router/releases)。
+`v0.4.0` 是当前公开版本，包含任务路由、静态能力榜单、模型回退、DAG 执行、独立运行日志、预算与并发限制、隐私优先日志、Claude Code PreToolUse 动作守卫，以及面向新用户的 `--route` 干跑、`--doctor` 自检和 `--stats` 本地成本汇总。发布记录见 [Releases](https://github.com/2649895039-blip/task-api-router/releases)。
+
+贡献指南见 [CONTRIBUTING.md](CONTRIBUTING.md)。欢迎在 Issues 提安装摩擦或改进建议。
 
 ## License
 
